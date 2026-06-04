@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeServer · Infrastructure</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --bg-grid: rgba(99, 102, 241, 0.05);
+      --surface: #ffffff;
+      --surface-hi: #f1f5f9;
+      --border: #e5e7eb;
+      --border-hi: #cbd5e1;
+      --text: #0f172a;
+      --text-hi: #020617;
+      --muted: #64748b;
+      --muted-hi: #475569;
+      --primary: #6366f1;
+      --primary-hi: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --purple: #a855f7;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+      --shadow-lg: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      background-image:
+        radial-gradient(circle at 20% 10%, rgba(99, 102, 241, 0.06), transparent 40%),
+        radial-gradient(circle at 80% 90%, rgba(168, 85, 247, 0.04), transparent 40%),
+        linear-gradient(var(--bg-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+      background-size: auto, auto, 32px 32px, 32px 32px;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Header */
+    header {
+      display: flex; align-items: center; gap: 24px;
+      padding: 14px 28px;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 15px; color: var(--text-hi);
+      letter-spacing: -0.01em;
+    }
+    .brand-mark {
+      display: grid; place-items: center;
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+      color: white; font-size: 14px;
+    }
+    .brand small {
+      color: var(--muted); font-weight: 400; font-size: 12px;
+      letter-spacing: 0;
+    }
+    .stats {
+      display: flex; gap: 6px;
+      margin-left: auto;
+    }
+    .stat {
+      display: flex; flex-direction: column;
+      padding: 4px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      min-width: 70px;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat-val {
+      font-size: 16px; font-weight: 600; color: var(--text-hi);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-key {
+      font-size: 10px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .ts {
+      font-size: 11px; color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      padding-left: 16px;
+      border-left: 1px solid var(--border);
+    }
+
+    /* Legend bar */
+    .legend-bar {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      padding: 10px 28px;
+      background: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 11px; font-weight: 500;
+      color: var(--muted-hi);
+      transition: all 0.15s ease;
+      box-shadow: var(--shadow-sm);
+    }
+    .chip-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Main split */
+    .main { display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative; }
+    #network { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%; position: relative; }
+    .hint {
+      position: absolute; bottom: 18px; left: 24px;
+      padding: 6px 12px;
+      background: var(--surface);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px; color: var(--muted);
+      pointer-events: none;
+      font-family: 'JetBrains Mono', monospace;
+      box-shadow: var(--shadow);
+    }
+    .hint kbd {
+      padding: 1px 5px; background: var(--surface-hi);
+      border: 1px solid var(--border-hi); border-radius: 3px;
+      color: var(--text); font-family: inherit;
+    }
+
+    /* Sidebar */
+    #sidebar {
+      width: clamp(300px, 28vw, 380px);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      flex-shrink: 0;
+      display: flex; flex-direction: column;
+      box-shadow: -4px 0 16px rgba(15, 23, 42, 0.04);
+    }
+    #sidebar::-webkit-scrollbar { width: 6px; }
+    #sidebar::-webkit-scrollbar-track { background: transparent; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+    .sidebar-empty {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px;
+      color: var(--muted); font-size: 13px; text-align: center;
+      padding: 24px;
+    }
+    .sidebar-empty-icon {
+      width: 48px; height: 48px;
+      border: 2px dashed var(--border-hi);
+      border-radius: 12px;
+      display: grid; place-items: center;
+      color: var(--muted);
+      font-size: 22px;
+    }
+
+    .detail {
+      padding: 24px 22px;
+    }
+    .detail-header {
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 18px;
+    }
+    .detail-eyebrow {
+      display: inline-block;
+      padding: 3px 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 10px; font-weight: 600;
+      color: var(--primary-hi);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+    .detail h2 {
+      font-size: 18px; font-weight: 600;
+      color: var(--text-hi);
+      letter-spacing: -0.015em;
+      line-height: 1.25;
+    }
+
+    .section-title {
+      font-size: 10px; font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin: 18px 0 10px;
+    }
+
+    .field {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px; line-height: 1.5;
+    }
+    .field:last-child { border-bottom: none; }
+    .field-key {
+      color: var(--muted);
+      min-width: 88px; flex-shrink: 0;
+      font-weight: 500;
+    }
+    .field-val {
+      color: var(--text);
+      word-break: break-word;
+      flex: 1;
+    }
+    .field-val a {
+      color: var(--primary-hi);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.15s ease;
+    }
+    .field-val a:hover { border-bottom-color: var(--primary-hi); }
+    .field-val code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      padding: 1px 5px;
+      background: var(--surface);
+      border-radius: 4px;
+    }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px; font-weight: 500;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .status-pill.warning {
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--warning);
+      border-color: rgba(245, 158, 11, 0.25);
+    }
+    .status-pill::before {
+      content: ""; width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .sources {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .source-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 12px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      min-width: 0;
+    }
+    .source-link:hover {
+      background: var(--surface-hi);
+      border-color: var(--border-hi);
+      transform: translateY(-1px);
+    }
+    .source-icon {
+      display: grid; place-items: center;
+      width: 24px; height: 24px;
+      background: rgba(99, 102, 241, 0.12);
+      border-radius: 5px;
+      color: var(--primary-hi);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .source-label {
+      font-weight: 500; color: var(--text-hi);
+      margin-right: auto;
+      flex-shrink: 0;
+    }
+    .source-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      color: var(--muted);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .source-arrow {
+      color: var(--muted); font-size: 11px;
+    }
+
+    @media (max-width: 980px) {
+      header {
+        flex-wrap: wrap;
+        gap: 12px 18px;
+        padding: 12px 18px;
+      }
+      .stats {
+        order: 3;
+        width: 100%;
+        margin-left: 0;
+        overflow-x: auto;
+        padding-bottom: 2px;
+      }
+      .stat { min-width: 76px; }
+      .ts { margin-left: auto; }
+      .legend-bar { padding: 8px 18px; }
+      .main { flex-direction: column; }
+      #network {
+        flex: 1 0 52vh;
+        height: 52vh;
+        min-height: 360px;
+      }
+      #sidebar {
+        width: 100%;
+        max-height: 34vh;
+        border-left: 0;
+        border-top: 1px solid var(--border);
+        box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.04);
+      }
+      .sidebar-empty {
+        min-height: 120px;
+      }
+      .detail {
+        padding: 18px;
+      }
+      .detail-header {
+        padding-bottom: 14px;
+        margin-bottom: 14px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      body { overflow: auto; }
+      header {
+        position: sticky;
+        top: 0;
+        padding: 10px 12px;
+      }
+      .brand-mark { width: 26px; height: 26px; border-radius: 7px; }
+      .stats {
+        gap: 4px;
+        scrollbar-width: none;
+      }
+      .stats::-webkit-scrollbar { display: none; }
+      .stat {
+        min-width: 68px;
+        padding: 4px 10px;
+      }
+      .ts { display: none; }
+      .legend-bar {
+        padding: 8px 12px;
+        gap: 6px;
+      }
+      .chip {
+        padding: 5px 9px;
+        gap: 6px;
+      }
+      .main {
+        flex: 0 0 auto;
+        min-height: calc(100vh - 128px);
+        overflow: visible;
+      }
+      #network {
+        flex-basis: 58vh;
+        height: 58vh;
+        min-height: 58vh;
+      }
+      .hint { display: none; }
+      #sidebar {
+        max-height: none;
+        min-height: 220px;
+      }
+      .field {
+        display: grid;
+        grid-template-columns: minmax(76px, 32%) minmax(0, 1fr);
+        gap: 8px;
+      }
+      .source-link {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+      .source-label {
+        margin-right: 0;
+      }
+      .source-path {
+        grid-column: 2 / 4;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">▣</div>
+    <div>HomeServer<br><small>Infrastructure topology</small></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-val">8</div><div class="stat-key">Guests</div></div>
+    <div class="stat"><div class="stat-val">9</div><div class="stat-key">Services</div></div>
+    <div class="stat"><div class="stat-val">11</div><div class="stat-key">Cores</div></div>
+    <div class="stat"><div class="stat-val">12.5</div><div class="stat-key">GiB RAM</div></div>
+  </div>
+  <span class="ts">2026-06-04 15:16 UTC</span>
+</header>
+
+<div class="legend-bar">
+  <div class="chip"><div class="chip-dot" style="color:#94a3b8"></div>Proxmox host</div>
+  <div class="chip"><div class="chip-dot" style="color:#a855f7"></div>VM</div>
+  <div class="chip"><div class="chip-dot" style="color:#6366f1"></div>LXC</div>
+  <div class="chip"><div class="chip-dot" style="color:#10b981"></div>Container</div>
+  <div class="chip"><div class="chip-dot" style="color:#f59e0b"></div>Service</div>
+  <div class="chip"><div class="chip-dot" style="color:#ef4444"></div>External</div>
+</div>
+
+<div class="main">
+  <div id="network">
+    <div class="hint">Scroll <kbd>⇅</kbd> zoom · Drag pan · Click node for details</div>
+  </div>
+  <aside id="sidebar">
+    <div class="sidebar-empty">
+      <div class="sidebar-empty-icon">◌</div>
+      <div>Select a node to view<br>configuration & sources</div>
+    </div>
+  </aside>
+</div>
+
+<script>
+const RAW = {"nodes": [{"id": "proxmox", "label": "proxmox\nPVE 9.x", "group": "host", "level": 1}, {"id": "guest_100", "label": "HomeAssistant\n10.0.0.2", "group": "qemu", "level": 2}, {"id": "guest_102", "label": "adguard\n10.0.0.3", "group": "lxc", "level": 2}, {"id": "svc_102_AdGuardHome", "label": "AdGuardHome", "group": "service", "level": 3}, {"id": "guest_107", "label": "caddy\n10.0.0.4", "group": "lxc", "level": 2}, {"id": "svc_107_caddy", "label": "caddy\n:\u2022\u2022\u2022\u2022", "group": "container", "level": 3}, {"id": "guest_105", "label": "frigate\n10.0.0.5", "group": "lxc", "level": 2}, {"id": "svc_105_frigate", "label": "frigate\n:\u2022\u2022\u2022\u2022", "group": "container", "level": 3}, {"id": "guest_109", "label": "homepage\n10.0.0.6", "group": "lxc", "level": 2}, {"id": "svc_109_homepage", "label": "homepage\n:\u2022\u2022\u2022\u2022", "group": "container", "level": 3}, {"id": "guest_101", "label": "lola-web\n10.0.0.7", "group": "lxc", "level": 2}, {"id": "svc_101_lola_web", "label": "lola-web\n:\u2022\u2022\u2022\u2022", "group": "container", "level": 3}, {"id": "svc_101_cloudflared", "label": "cloudflared", "group": "container", "level": 3}, {"id": "svc_101_watchtower", "label": "watchtower", "group": "container", "level": 3}, {"id": "guest_108", "label": "semaphore\n10.0.0.8", "group": "lxc", "level": 2}, {"id": "svc_108_semaphore", "label": "semaphore\n:\u2022\u2022\u2022\u2022", "group": "container", "level": 3}, {"id": "guest_103", "label": "tailscale\n10.0.0.9", "group": "lxc", "level": 2}, {"id": "svc_103_tailscaled", "label": "tailscaled", "group": "service", "level": 3}, {"id": "internet", "label": "Internet", "group": "external", "level": 0}, {"id": "cloudflare", "label": "Cloudflare\nTunnel", "group": "external", "level": 1}], "edges": [{"id": 0, "from": "proxmox", "to": "guest_100"}, {"id": 1, "from": "proxmox", "to": "guest_102"}, {"id": 2, "from": "guest_102", "to": "svc_102_AdGuardHome"}, {"id": 3, "from": "proxmox", "to": "guest_107"}, {"id": 4, "from": "guest_107", "to": "svc_107_caddy"}, {"id": 5, "from": "proxmox", "to": "guest_105"}, {"id": 6, "from": "guest_105", "to": "svc_105_frigate"}, {"id": 7, "from": "proxmox", "to": "guest_109"}, {"id": 8, "from": "guest_109", "to": "svc_109_homepage"}, {"id": 9, "from": "proxmox", "to": "guest_101"}, {"id": 10, "from": "guest_101", "to": "svc_101_lola_web"}, {"id": 11, "from": "guest_101", "to": "svc_101_cloudflared"}, {"id": 12, "from": "guest_101", "to": "svc_101_watchtower"}, {"id": 13, "from": "proxmox", "to": "guest_108"}, {"id": 14, "from": "guest_108", "to": "svc_108_semaphore"}, {"id": 15, "from": "proxmox", "to": "guest_103"}, {"id": 16, "from": "guest_103", "to": "svc_103_tailscaled"}, {"id": 17, "from": "internet", "to": "cloudflare", "label": "HTTPS", "color": {"color": "#f85149"}, "dashes": true}, {"id": 18, "from": "cloudflare", "to": "svc_101_cloudflared", "color": {"color": "#f85149"}, "dashes": true}]};
+const DETAILS = {"proxmox": {"title": "Proxmox Node", "kind": "Hypervisor", "fields": {"Version": "PVE 9.x", "OS": "6.x", "CPU": "x86_64 (redacted)", "Cores": 4, "Memory": "15.51 GiB", "IP": "10.0.0.1", "Domain": "service-1.example.com"}, "sources": []}, "guest_100": {"title": "HomeAssistant", "kind": "VM (QEMU)", "fields": {"Status": "running", "Role": "home automation", "OS": "unknown", "IP": "10.0.0.2", "Cores": 2, "Memory": "4.0 GiB", "Privileged": "\u2014", "Domain": "service-2.example.com", "VM ID": "100"}, "sources": []}, "guest_102": {"title": "adguard", "kind": "LXC Container", "fields": {"Status": "running", "Role": "dns filter", "OS": "Debian GNU/Linux", "IP": "10.0.0.3", "Cores": 1, "Memory": "0.5 GiB", "Privileged": "\u2014", "Domain": "service-3.example.com", "VM ID": "102"}, "sources": []}, "svc_102_AdGuardHome": {"title": "AdGuardHome", "kind": "Systemd Service", "fields": {"Ports": "\u2014", "Domain": "service-3.example.com", "Host": "adguard"}, "sources": []}, "guest_107": {"title": "caddy", "kind": "LXC Container", "fields": {"Status": "running", "Role": "reverse proxy", "OS": "Debian GNU/Linux", "IP": "10.0.0.4", "Cores": 1, "Memory": "0.5 GiB", "Privileged": "\u2014", "Domain": "\u2014", "VM ID": "107"}, "sources": []}, "svc_107_caddy": {"title": "caddy", "kind": "Docker Container", "fields": {"Image": "caddy-cloudflare", "Ports": "\u2022\u2022\u2022\u2022", "Domain": "\u2014", "Host": "caddy"}, "sources": []}, "guest_105": {"title": "frigate", "kind": "LXC Container", "fields": {"Status": "running", "Role": "video nvr", "OS": "Debian GNU/Linux", "IP": "10.0.0.5", "Cores": 2, "Memory": "4.0 GiB", "Privileged": "Yes", "Domain": "service-4.example.com", "VM ID": "105"}, "sources": []}, "svc_105_frigate": {"title": "frigate", "kind": "Docker Container", "fields": {"Image": "frigate", "Ports": "\u2022\u2022\u2022\u2022", "Domain": "service-4.example.com", "Host": "frigate"}, "sources": []}, "guest_109": {"title": "homepage", "kind": "LXC Container", "fields": {"Status": "running", "Role": "dashboard", "OS": "Debian GNU/Linux", "IP": "10.0.0.6", "Cores": 1, "Memory": "0.5 GiB", "Privileged": "\u2014", "Domain": "service-5.example.com", "VM ID": "109"}, "sources": []}, "svc_109_homepage": {"title": "homepage", "kind": "Docker Container", "fields": {"Image": "homepage", "Ports": "\u2022\u2022\u2022\u2022", "Domain": "service-5.example.com", "Host": "homepage"}, "sources": []}, "guest_101": {"title": "lola-web", "kind": "LXC Container", "fields": {"Status": "running", "Role": "web app", "OS": "Debian GNU/Linux", "IP": "10.0.0.7", "Cores": 2, "Memory": "2.0 GiB", "Privileged": "\u2014", "Domain": "\u2014", "VM ID": "101"}, "sources": []}, "svc_101_lola_web": {"title": "lola-web", "kind": "Docker Container", "fields": {"Image": "lola-web", "Ports": "\u2022\u2022\u2022\u2022", "Domain": "\u2014", "Host": "lola-web"}, "sources": []}, "svc_101_cloudflared": {"title": "cloudflared", "kind": "Docker Container", "fields": {"Image": "cloudflared", "Ports": "\u2014", "Domain": "\u2014", "Host": "lola-web"}, "sources": []}, "svc_101_watchtower": {"title": "watchtower", "kind": "Docker Container", "fields": {"Image": "watchtower", "Ports": "\u2014", "Domain": "\u2014", "Host": "lola-web"}, "sources": []}, "guest_108": {"title": "semaphore", "kind": "LXC Container", "fields": {"Status": "running", "Role": "gitops runner", "OS": "Debian GNU/Linux", "IP": "10.0.0.8", "Cores": 1, "Memory": "0.5 GiB", "Privileged": "\u2014", "Domain": "service-6.example.com", "VM ID": "108"}, "sources": []}, "svc_108_semaphore": {"title": "semaphore", "kind": "Docker Container", "fields": {"Image": "semaphore", "Ports": "\u2022\u2022\u2022\u2022", "Domain": "service-6.example.com", "Host": "semaphore"}, "sources": []}, "guest_103": {"title": "tailscale", "kind": "LXC Container", "fields": {"Status": "running", "Role": "vpn overlay", "OS": "Debian GNU/Linux", "IP": "10.0.0.9", "Cores": 1, "Memory": "0.5 GiB", "Privileged": "\u2014", "Domain": "\u2014", "VM ID": "103"}, "sources": []}, "svc_103_tailscaled": {"title": "tailscaled", "kind": "Systemd Service", "fields": {"Ports": "\u2014", "Domain": "\u2014", "Host": "tailscale"}, "sources": []}, "internet": {"title": "Internet", "kind": "External", "fields": {"Access": "Public"}, "sources": []}, "cloudflare": {"title": "Cloudflare Tunnel", "kind": "External", "fields": {"Access": "Outbound tunnel"}, "sources": []}};
+const REPO = "";
+
+const nodes = new vis.DataSet(RAW.nodes);
+const edges = new vis.DataSet(RAW.edges);
+
+const PALETTE = {
+  host:      { bg: "#ffffff", border: "#64748b", fg: "#0f172a" },
+  qemu:      { bg: "#faf5ff", border: "#a855f7", fg: "#581c87" },
+  lxc:       { bg: "#eef2ff", border: "#6366f1", fg: "#3730a3" },
+  container: { bg: "#ecfdf5", border: "#10b981", fg: "#065f46" },
+  service:   { bg: "#fffbeb", border: "#f59e0b", fg: "#78350f" },
+  external:  { bg: "#fef2f2", border: "#ef4444", fg: "#7f1d1d" },
+};
+
+const options = {
+  layout: {
+    hierarchical: {
+      enabled: true, direction: "UD", sortMethod: "directed",
+      levelSeparation: 140, nodeSpacing: 180, treeSpacing: 240,
+      blockShifting: true, edgeMinimization: true, parentCentralization: true,
+    }
+  },
+  groups: Object.fromEntries(Object.entries(PALETTE).map(([k, p]) => [k, {
+    shape: k === "host" ? "box" : (k === "container" ? "box" : (k === "service" ? "box" : (k === "external" ? "box" : "box"))),
+    shapeProperties: { borderRadius: 10 },
+    font: { color: p.fg, size: k === "host" ? 14 : 12, face: "Inter", multi: false, bold: { mod: "bold" }, vadjust: 0 },
+    color: { background: p.bg, border: p.border, highlight: { background: p.bg, border: p.fg }, hover: { background: p.bg, border: p.fg } },
+  }])),
+  nodes: {
+    margin: { top: 12, right: 18, bottom: 12, left: 18 },
+    shadow: { enabled: true, color: "rgba(15, 23, 42, 0.12)", size: 12, x: 0, y: 3 },
+    borderWidth: 1.5,
+    borderWidthSelected: 2.5,
+    chosen: { node: (v) => { v.shadow = true; v.shadowSize = 20; v.shadowColor = "rgba(99, 102, 241, 0.3)"; } },
+  },
+  edges: {
+    arrows: { to: { enabled: true, scaleFactor: 0.55, type: "arrow" } },
+    color: { color: "#cbd5e1", highlight: "#6366f1", hover: "#6366f1" },
+    smooth: { type: "cubicBezier", forceDirection: "vertical", roundness: 0.5 },
+    width: 1.2,
+    selectionWidth: 1.8,
+    font: { color: "#64748b", size: 10, face: "JetBrains Mono", background: "rgba(255, 255, 255, 0.95)", strokeWidth: 0, align: "middle" },
+  },
+  physics: { enabled: false },
+  interaction: { hover: true, tooltipDelay: 120, zoomView: true, dragView: true },
+};
+
+const networkEl = document.getElementById("network");
+const network = new vis.Network(
+  networkEl,
+  { nodes, edges },
+  options
+);
+
+const sidebar = document.getElementById("sidebar");
+let resizeTimer = null;
+
+function resizeNetwork(shouldFit = false) {
+  network.setSize("100%", "100%");
+  network.redraw();
+  if (shouldFit) {
+    network.fit({ animation: { duration: 250, easingFunction: "easeInOutQuad" } });
+  }
+}
+
+function scheduleNetworkResize(shouldFit = false) {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => resizeNetwork(shouldFit), 80);
+}
+
+if ("ResizeObserver" in window) {
+  new ResizeObserver(() => scheduleNetworkResize(false)).observe(networkEl);
+}
+window.addEventListener("resize", () => scheduleNetworkResize(true));
+window.addEventListener("orientationchange", () => scheduleNetworkResize(true));
+
+const KIND_ICONS = { OpenTofu: "⬢", Playbook: "▶", Compose: "⊟", Caddyfile: "⇆", Config: "⚙" };
+
+function statusBadge(s) {
+  const cls = s === "running" ? "" : (s === "decommissioned" ? "warning" : "warning");
+  return `<span class="status-pill ${cls}">${s}</span>`;
+}
+
+function privilegedBadge(v) {
+  if (!v || v === "No") return `<span class="status-pill">unprivileged</span>`;
+  return `<span class="status-pill warning">⚠ privileged</span>`;
+}
+
+function renderDetail(nid) {
+  const d = DETAILS[nid];
+  if (!d) {
+    sidebar.innerHTML = `
+      <div class="sidebar-empty">
+        <div class="sidebar-empty-icon">◌</div>
+        <div>Select a node to view<br>configuration & sources</div>
+      </div>`;
+    return;
+  }
+
+  const kind = (d.title.split("—")[0] || d.title).trim();
+  let html = `<div class="detail">
+    <div class="detail-header">
+      <div class="detail-eyebrow">${d.kind || kind}</div>
+      <h2>${d.title}</h2>
+    </div>
+    <div class="section-title">Details</div>`;
+
+  for (const [k, v] of Object.entries(d.fields)) {
+    if (v === "—") continue;
+    let cell = v;
+    if (k === "Status") cell = statusBadge(v);
+    else if (k === "Privileged") cell = privilegedBadge(v);
+    html += `<div class="field"><span class="field-key">${k}</span><span class="field-val">${cell}</span></div>`;
+  }
+
+  if (d.sources && d.sources.length) {
+    html += `<div class="section-title">Configuration</div><div class="sources">`;
+    for (const src of d.sources) {
+      const icon = KIND_ICONS[src.label] || "📄";
+      html += `<a class="source-link" href="${REPO}/${src.path}" target="_blank" rel="noopener">
+        <div class="source-icon">${icon}</div>
+        <div class="source-label">${src.label}</div>
+        <div class="source-path">${src.path}</div>
+        <div class="source-arrow">↗</div>
+      </a>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  sidebar.innerHTML = html;
+}
+
+network.on("click", p => renderDetail(p.nodes[0] || null));
+network.on("hoverNode", () => { networkEl.style.cursor = "pointer"; });
+network.on("blurNode",  () => { networkEl.style.cursor = "default"; });
+network.once("afterDrawing", () => {
+  resizeNetwork(true);
+  setTimeout(() => resizeNetwork(true), 160);
+});
+</script>
+</body>
+</html>
